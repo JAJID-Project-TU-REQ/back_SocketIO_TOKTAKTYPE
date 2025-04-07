@@ -135,6 +135,13 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("gameStarted");
   });
 
+  // ร้องขอรายชื่อผู้เล่นในห้อง
+  socket.on("requestPlayerList", (roomId) => {
+    if (rooms[roomId]) {
+      socket.emit("playerList", rooms[roomId].players);
+    }
+  });
+
   // player หลุดออกจากห้อง (ปิด tab, หลุด)
   socket.on("disconnect", () => {
     for (const roomId in rooms) {
