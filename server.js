@@ -32,6 +32,7 @@ io.on("connection", (socket) => {
   socket.on("createRoom", () => {
     const roomId = generateRoomCode();
     rooms[roomId] = { players: [] };
+    console.log("📦 Room created:", roomId);
     socket.emit("roomCreated", roomId); // ส่งรหัสห้องให้ client
   });
 
@@ -91,6 +92,13 @@ socket.on("leaveRoom", ({ roomId, playerId }) => {
   // เริ่มเกม
   socket.on("startGame", (roomId) => {
     io.to(roomId).emit("gameStarted");
+  });
+
+  // ร้องขอรายชื่อผู้เล่นในห้อง
+  socket.on("requestPlayerList", (roomId) => {
+    if (rooms[roomId]) {
+      socket.emit("playerList", rooms[roomId].players);
+    }
   });
 
   // player หลุดออกจากห้อง (ปิด tab, หลุด)
