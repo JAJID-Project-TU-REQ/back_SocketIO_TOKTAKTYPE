@@ -17,7 +17,7 @@ function generateRoomCode() {
   let roomId;
   do {
     roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
-  } while (rooms[roomId]); 
+  } while (rooms[roomId]);
   return roomId;
 }
 
@@ -31,50 +31,92 @@ io.on("connection", (socket) => {
   // สร้างห้องใหม่
   socket.on("createRoom", () => {
     const roomId = generateRoomCode();
-    rooms[roomId] = { players: [] };
-    socket.emit("roomCreated", roomId); // ส่งรหัสห้องให้ client
+    rooms[roomId] = {
+      hostId: playerId,       // คนสร้างห้อง = host
+      status: "waiting",      // เริ่มจากรอ
+      players: []
+    };
+    console.log("📦 Room created:", roomId);
+    socket.emit("roomCreated", roomId);
   });
 
   // เข้าร่วมห้อง
   socket.on("joinRoom", ({ roomId, playerName, playerId }) => {
-    if (!rooms[roomId]) {
+    const room = rooms[roomId];
+    if (!room) {
       socket.emit("error", "ห้องนี้ไม่มีอยู่");
       return;
     }
 
-    // เช็คว่าห้องเต็มหรือยัง
-    if (rooms[roomId].players.length >= MAX_PLAYERS) {
+    if (room.status !== "waiting") {
+      socket.emit("error", "เกมเริ่มไปแล้ว");
+      return;
+    }
+
+    if (room.players.length >= MAX_PLAYERS) {
       socket.emit("roomFull", "ห้องนี้เต็มแล้ว");
       return;
     }
 
-    // เช็คว่าผู้เล่น reconnect หรือไม่
-    let player = rooms[roomId].players.find(p => p.id === playerId);
+    // 🔒 กันชื่อซ้ำในห้องเดียวกัน
+    const duplicateName = room.players.find(p => p.name === playerName && p.id !== playerId);
+    if (duplicateName) {
+      socket.emit("error", "ชื่อซ้ำในห้อง");
+      return;
+    }
+
+    // 🔁 ถ้า reconnect
+    let player = room.players.find(p => p.id === playerId);
     if (player) {
-      player.socketId = socket.id; // อัปเดต socket.id ใหม่
+      player.socketId = socket.id;
     } else {
-      rooms[roomId].players.push({ id: playerId, socketId: socket.id, name: playerName, wpm: 0 });
+      room.players.push({ id: playerId, socketId: socket.id, name: playerName, wpm: 0 });
     }
 
     socket.join(roomId);
-    io.to(roomId).emit("playerList", rooms[roomId].players);
+    io.to(roomId).emit("playerList", room.players);
   });
 
   // player กดออกจากห้องเอง
-socket.on("leaveRoom", ({ roomId, playerId }) => {
-  if (!rooms[roomId]) return;
+  socket.on("leaveRoom", ({ roomId, playerId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
 
-  // ลบผู้เล่นออกจากห้อง
-  rooms[roomId].players = rooms[roomId].players.filter(player => player.id !== playerId);
+    room.players = room.players.filter(player => player.id !== playerId);
+    io.to(roomId).emit("playerList", room.players);
 
-  // อัปเดตรายชื่อในห้อง
-  io.to(roomId).emit("playerList", rooms[roomId].players);
+    // ถ้า host ออก → ย้าย host ไปให้คนแรกในลิสต์
+    if (room.hostId === playerId && room.players.length > 0) {
+      room.hostId = room.players[0].id;
+    }
 
-  // ถ้าไม่มีผู้เล่นในห้องแล้ว ให้ลบทิ้ง
-  if (rooms[roomId].players.length === 0) {
+    // ถ้าไม่มีคนเหลือในห้อง → ลบห้อง
+    if (room.players.length === 0) {
       delete rooms[roomId];
-  }
-});
+    }
+  });
+
+  // ร้องขอรายชื่อผู้เล่นในห้อง
+  socket.on("requestPlayerList", (roomId) => {
+    if (rooms[roomId]) {
+      socket.emit("playerList", rooms[roomId].players);
+    }
+  });
+
+  // ร้องขอข้อมูลห้อง (hostId, status, players)
+  socket.on("requestRoomInfo", (roomId) => {
+    const room = rooms[roomId];
+    if (room) {
+      socket.emit("roomInfo", {
+        roomId: roomId,
+        hostId: room.hostId,
+        status: room.status,
+        players: room.players
+      });
+    } else {
+      socket.emit("error", "ห้องนี้ไม่มีอยู่");
+    }
+  });
 
   // อัปเดต WPM ของผู้เล่น
   socket.on("updateWpm", ({ roomId, playerId, wpm }) => {
@@ -96,14 +138,23 @@ socket.on("leaveRoom", ({ roomId, playerId }) => {
   // player หลุดออกจากห้อง (ปิด tab, หลุด)
   socket.on("disconnect", () => {
     for (const roomId in rooms) {
-      rooms[roomId].players = rooms[roomId].players.filter(
-        (player) => player.socketId !== socket.id
-      );
+      const room = rooms[roomId];
+      const playerWasHost = room.hostId && room.players.find(p => p.socketId === socket.id)?.id === room.hostId;
 
-      io.to(roomId).emit("playerList", rooms[roomId].players);
+      // ลบผู้เล่นออก
+      room.players = room.players.filter(player => player.socketId !== socket.id);
 
-      if (rooms[roomId].players.length === 0) {
-        delete rooms[roomId]; // ลบห้องถ้าไม่มีคนอยู่
+      // ถ้า host หาย และยังมีคนในห้อง
+      if (playerWasHost && room.players.length > 0) {
+        room.hostId = room.players[0].id; // มอบ host ให้คนแรกที่เหลืออยู่
+        io.to(roomId).emit("hostChanged", room.hostId); // แจ้ง front ฝั่งอื่นให้รู้
+      }
+
+      // ส่ง playerList ใหม่
+      io.to(roomId).emit("playerList", room.players);
+
+      if (room.players.length === 0) {
+        delete rooms[roomId];
       }
     }
   });
