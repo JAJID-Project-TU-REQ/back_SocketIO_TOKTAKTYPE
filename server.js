@@ -6,7 +6,9 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }, // อนุญาตทุกโดเมน
+  cors: { origin: "*",
+    methods: ['GET', 'POST']
+   }, // อนุญาตทุกโดเมน
 });
 
 const rooms = {}; // { roomId: { players: [] } }
@@ -118,6 +120,18 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("getRoomIdByPlayerId", (playerId, callback) => {
+    for (const roomId in rooms) {
+      const room = rooms[roomId];
+      const player = room.players.find((p) => p.id === playerId);
+      if (player) {
+        callback(roomId); // ส่ง roomId กลับไปยัง client
+        return;
+      }
+    }
+    callback(null); // ถ้าไม่พบ roomId ให้ส่งค่า null กลับไป
+  });
+
   // อัปเดต WPM ของผู้เล่น
   socket.on("updateWpm", ({ roomId, playerId, wpm }) => {
     const room = rooms[roomId];
@@ -144,6 +158,7 @@ io.on("connection", (socket) => {
 
   // player หลุดออกจากห้อง (ปิด tab, หลุด)
   socket.on("disconnect", () => {
+    console.log('discon:', socket.id)
     for (const roomId in rooms) {
       const room = rooms[roomId];
       const playerWasHost = room.hostId && room.players.find(p => p.socketId === socket.id)?.id === room.hostId;
