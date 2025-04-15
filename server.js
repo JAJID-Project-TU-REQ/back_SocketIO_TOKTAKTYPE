@@ -76,6 +76,7 @@ io.on("connection", (socket) => {
     }
 
     socket.join(roomId);
+    console.log("🔑 Player joined room:", roomId, playerName);
     io.to(roomId).emit("playerList", room.players);
   });
 
@@ -99,9 +100,9 @@ io.on("connection", (socket) => {
   });
 
   // ร้องขอรายชื่อผู้เล่นในห้อง
-  socket.on("requestPlayerList", (roomId) => {
-    if (rooms[roomId]) {
-      socket.emit("playerList", rooms[roomId].players);
+  socket.on("requestPlayerList", (roomId, callback) => {
+    if (rooms[roomId].players) {
+      callback(rooms[roomId].players);
     }
   });
 
