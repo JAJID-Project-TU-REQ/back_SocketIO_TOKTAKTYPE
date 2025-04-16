@@ -31,7 +31,7 @@ io.on("connection", (socket) => {
   socket.emit("playerId", playerId);
 
   // สร้างห้องใหม่
-  socket.on("createRoom", () => {
+  socket.on("createRoom", (playerId) => {
     const roomId = generateRoomCode();
     rooms[roomId] = {
       hostId: playerId,       // คนสร้างห้อง = host
@@ -77,6 +77,16 @@ io.on("connection", (socket) => {
 
     socket.join(roomId);
     io.to(roomId).emit("playerList", room.players);
+    if (roomId) {
+      io.to(roomId).emit("roomInfo", {
+        roomId: roomId,
+        hostId: room.hostId,
+        status: room.status,
+        players: room.players
+      });
+    } else {
+      io.to(roomId).emit("error", "ห้องนี้ไม่มีอยู่");
+    }
   });
 
   // player กดออกจากห้องเอง
@@ -146,7 +156,18 @@ io.on("connection", (socket) => {
 
   // เริ่มเกม
   socket.on("startGame", (roomId) => {
-    io.to(roomId).emit("gameStarted");
+    const room = rooms[roomId];
+    if (room) {
+      if (room.status === "waiting") {
+        room.status = "playing"; // อัปเดตสถานะห้องเป็น playing
+        io.to(roomId).emit("gameStarted", { status: room.status }); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
+        console.log(`🎮 Game started in room: ${roomId}`);
+      } else {
+        socket.emit("error", "เกมเริ่มไปแล้วหรือสถานะไม่ถูกต้อง");
+      }
+    } else {
+      socket.emit("error", "ห้องนี้ไม่มีอยู่");
+    }
   });
 
   // ร้องขอรายชื่อผู้เล่นในห้อง
