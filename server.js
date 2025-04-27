@@ -146,13 +146,19 @@ io.on("connection", (socket) => {
   // อัปเดต WPM ของผู้เล่น
   socket.on("updateWpm", ({ roomId, playerId, wpm }) => {
     const room = rooms[roomId];
-    if (room) {
-      const player = room.players.find((p) => p.id === playerId);
-      if (player) {
-        player.wpm = wpm;
-        io.to(roomId).emit("playerList", room.players);
-      }
+    if (!room) {
+      socket.emit("error", "ไม่พบห้องที่ระบุ");
+      return;
     }
+  
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) {
+      socket.emit("error", "ไม่พบผู้เล่นในห้องนี้");
+      return;
+    }
+  
+    player.wpm = wpm;
+    io.to(roomId).emit("playerList", room.players);
   });
 
   // เริ่มเกม
@@ -161,7 +167,13 @@ io.on("connection", (socket) => {
     if (room) {
       if (room.status === "waiting") {
         room.status = "playing"; // อัปเดตสถานะห้องเป็น playing
-        io.to(roomId).emit("gameStarted", { status: room.status }); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
+
+        const startTimestamp = Date.now() + 5000;
+        room.startTimestamp = startTimestamp;
+
+        io.to(roomId).emit("gameStarted", { 
+          status: room.status, 
+          startTimestamp: startTimestamp, }); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
         console.log(`🎮 Game started in room: ${roomId}`);
       } else {
         socket.emit("error", "เกมเริ่มไปแล้วหรือสถานะไม่ถูกต้อง");
