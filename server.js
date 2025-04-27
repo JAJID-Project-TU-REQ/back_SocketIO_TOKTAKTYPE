@@ -161,7 +161,7 @@ io.on("connection", (socket) => {
     if (room) {
       if (room.status === "waiting") {
         room.status = "playing"; // อัปเดตสถานะห้องเป็น playing
-        io.to(roomId).emit("gameStarted", { status: room.status }); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
+        io.to(roomId).emit("gameStarted", room.status); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
         console.log(`🎮 Game started in room: ${roomId}`);
       } else {
         socket.emit("error", "เกมเริ่มไปแล้วหรือสถานะไม่ถูกต้อง");
@@ -205,6 +205,6 @@ io.on("connection", (socket) => {
 });
 
 // เปิดเซิร์ฟเวอร์
-server.listen(3002, () => {
-  console.log("🚀 Server is running on port 3002");
+server.listen(3001, () => {
+  console.log("🚀 Server is running on port 3001");
 });
