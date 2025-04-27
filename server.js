@@ -65,6 +65,11 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!playerName) {
+      socket.emit("error", "กรุณากรอกชื่อผู้เล่น");
+      return;
+    }
+
     // 🔒 กันชื่อซ้ำในห้องเดียวกัน
     const duplicateName = room.players.find(p => p.name === playerName && p.id !== playerId);
     if (duplicateName) {
@@ -106,6 +111,7 @@ io.on("connection", (socket) => {
     // ถ้า host ออก → ย้าย host ไปให้คนแรกในลิสต์
     if (room.hostId === playerId && room.players.length > 0) {
       room.hostId = room.players[0].id;
+      io.to(roomId).emit("hostChanged", room.hostId);
     }
 
     // ถ้าไม่มีคนเหลือในห้อง → ลบห้อง
