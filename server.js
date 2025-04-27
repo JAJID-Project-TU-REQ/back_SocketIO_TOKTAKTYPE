@@ -237,7 +237,16 @@ io.on("connection", (socket) => {
     }
 
     player.wpm = wpm;
-    io.to(roomId).emit("playerList", room.players);
+  });
+
+  socket.on("getPlayersWpm", (roomId, callback) => {
+    const room = rooms[roomId];
+    if (room) {
+      const playersWPM = room.players.map(player => ({ name: player.name, wpm: player.wpm }));
+      callback(playersWPM); // ส่ง WPM ของผู้เล่นกลับไปยัง client
+    } else {
+      callback(null); // ถ้าไม่พบห้อง ให้ส่งค่า null กลับไป
+    }
   });
 
 });
