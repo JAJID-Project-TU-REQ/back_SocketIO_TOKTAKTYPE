@@ -6,9 +6,10 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*",
+  cors: {
+    origin: "*",
     methods: ['GET', 'POST']
-   }, // อนุญาตทุกโดเมน
+  }, // อนุญาตทุกโดเมน
 });
 
 const rooms = {}; // { roomId: { players: [] } }
@@ -29,6 +30,10 @@ io.on("connection", (socket) => {
   // ส่ง playerId (UUID) ให้ผู้เล่น
   const playerId = uuidv4();
   socket.emit("playerId", playerId);
+
+  // -------------------------------------------------------------------------------------------------------------------
+  // ฟังก์ชันหน้าแรก
+  // -------------------------------------------------------------------------------------------------------------------
 
   // สร้างห้องใหม่
   socket.on("createRoom", (playerId) => {
@@ -109,6 +114,10 @@ io.on("connection", (socket) => {
     }
   });
 
+  // -------------------------------------------------------------------------------------------------------------------
+  // ฟังก์ชันหน้า Lobby
+  // -------------------------------------------------------------------------------------------------------------------
+
   // ร้องขอรายชื่อผู้เล่นในห้อง
   socket.on("requestPlayerList", (roomId, callback) => {
     if (rooms[roomId].players) {
@@ -143,50 +152,12 @@ io.on("connection", (socket) => {
     callback(null); // ถ้าไม่พบ roomId ให้ส่งค่า null กลับไป
   });
 
-  // อัปเดต WPM ของผู้เล่น
-  socket.on("updateWpm", ({ roomId, playerId, wpm }) => {
-    const room = rooms[roomId];
-    if (!room) {
-      socket.emit("error", "ไม่พบห้องที่ระบุ");
-      return;
-    }
-  
-    const player = room.players.find((p) => p.id === playerId);
-    if (!player) {
-      socket.emit("error", "ไม่พบผู้เล่นในห้องนี้");
-      return;
-    }
-  
-    player.wpm = wpm;
-    io.to(roomId).emit("playerList", room.players);
-  });
-
-  // เริ่มเกม
-  socket.on("startGame", (roomId) => {
+  socket.on("getGameStatus", (roomId, callback) => {
     const room = rooms[roomId];
     if (room) {
-      if (room.status === "waiting") {
-        room.status = "playing"; // อัปเดตสถานะห้องเป็น playing
-
-        const startTimestamp = Date.now() + 5000;
-        room.startTimestamp = startTimestamp;
-
-        io.to(roomId).emit("gameStarted", { 
-          status: room.status, 
-          startTimestamp: startTimestamp, }); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
-        console.log(`🎮 Game started in room: ${roomId}`);
-      } else {
-        socket.emit("error", "เกมเริ่มไปแล้วหรือสถานะไม่ถูกต้อง");
-      }
+      callback(room.status); // ส่งสถานะเกมกลับไปยัง client
     } else {
-      socket.emit("error", "ห้องนี้ไม่มีอยู่");
-    }
-  });
-
-  // ร้องขอรายชื่อผู้เล่นในห้อง
-  socket.on("requestPlayerList", (roomId) => {
-    if (rooms[roomId]) {
-      socket.emit("playerList", rooms[roomId].players);
+      callback(null); // ถ้าไม่พบห้อง ให้ส่งค่า null กลับไป
     }
   });
 
@@ -214,6 +185,61 @@ io.on("connection", (socket) => {
       }
     }
   });
+
+  socket.on("getStartTimestamp", (roomId, callback) => {
+    const room = rooms[roomId];
+    if (room) {
+      callback(room.startTimestamp); // ส่ง startTimestamp กลับไปยัง client
+    } else {
+      callback(null); // ถ้าไม่พบห้อง ให้ส่งค่า null กลับไป
+    }
+  });
+
+  // เริ่มเกม
+  socket.on("startGame", (roomId) => {
+    const room = rooms[roomId];
+    if (room) {
+      if (room.status === "waiting") {
+        room.status = "playing"; // อัปเดตสถานะห้องเป็น playing
+
+        const startTimestamp = Date.now();
+        room.startTimestamp = startTimestamp;
+
+        io.to(roomId).emit("gameStarted", {
+          status: room.status,
+          startTimestamp: startTimestamp,
+        }); // ส่งสถานะใหม่ไปยังผู้เล่นในห้อง
+        console.log(`🎮 Game started in room: ${roomId}`);
+      } else {
+        socket.emit("error", "เกมเริ่มไปแล้วหรือสถานะไม่ถูกต้อง");
+      }
+    } else {
+      socket.emit("error", "ห้องนี้ไม่มีอยู่");
+    }
+  });
+
+  // -------------------------------------------------------------------------------------------------------------------
+  // ฟังก์ชันหน้า Type
+  // -------------------------------------------------------------------------------------------------------------------
+
+  // อัปเดต WPM ของผู้เล่น
+  socket.on("updateWpm", ({ roomId, playerId, wpm }) => {
+    const room = rooms[roomId];
+    if (!room) {
+      socket.emit("error", "ไม่พบห้องที่ระบุ");
+      return;
+    }
+
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) {
+      socket.emit("error", "ไม่พบผู้เล่นในห้องนี้");
+      return;
+    }
+
+    player.wpm = wpm;
+    io.to(roomId).emit("playerList", room.players);
+  });
+
 });
 
 // เปิดเซิร์ฟเวอร์
